@@ -90,16 +90,17 @@ export const UserProfileDialog = ({ user, isOpen, onClose, onSignManifesto }: Us
             />
             <div className="flex-1">
               <h3 className="font-semibold text-manifesto-gray text-lg">
-                {user.user_metadata?.full_name || user.user_metadata?.name || 'User'}
+                {user.user_metadata?.full_name ||
+                  user.user_metadata?.name ||
+                  user.user_metadata?.preferred_username ||
+                  user.user_metadata?.user_name ||
+                  'User'}
               </h3>
               <p className="text-sm text-gray-600">
                 @{user.user_metadata?.preferred_username || user.user_metadata?.user_name || 'username'}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {user.email}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Member since: {new Date().toLocaleDateString()}
               </p>
             </div>
           </div>

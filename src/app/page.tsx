@@ -81,11 +81,10 @@ const Footer = () => {
         <div className="mt-8 pt-6 border-t border-gray-100">
           <div className="text-xs text-gray-500 space-y-1">
             <p>Built with Next.js, TailwindCSS, and Three.js</p>
-            <p>Database: Supabase | Typography: JetBrains Mono</p>
-            <p>Content managed via Markdown</p>
+            <p>Typography: JetBrains Mono</p>
             <div className="mt-4 pt-3 border-t border-gray-50">
               <p>© 2025 MasterFabric Developers. All rights reserved.</p>
-              <p>Version v1.0.0+beta</p>
+              <p>Version v0.3.0</p>
             </div>
           </div>
         </div>
@@ -272,24 +271,20 @@ export default function Home() {
         <section className="mt-24 pt-16 border-t border-gray-200">
           <div className="max-w-4xl mx-auto">
             {/* Signatures List */}
-            <div className="mb-16">
-              <SignaturesList ref={signaturesListRef} />
-            </div>
+            <SignaturesList ref={signaturesListRef} />
 
             {/* GitHub Authentication & Signature Form */}
-            <div className="bg-gray-50 rounded-lg p-8">
-              <div className="max-w-md mx-auto">
+            <div className="rounded-lg bg-gray-50 p-4 sm:p-5">
+              <div className="mx-auto max-w-md space-y-4">
                 <GitHubAuth 
                   onAuthChange={handleAuthChange}
                   onShowUserDialog={handleShowUserDialog}
                 />
                 {(currentUser && showSignatureForm) && (
-                  <div className="mt-6">
-                    <SignatureForm 
-                      onSignatureSuccess={handleSignatureSuccess}
-                      onRefreshSignatures={handleRefreshSignatures}
-                    />
-                  </div>
+                  <SignatureForm 
+                    onSignatureSuccess={handleSignatureSuccess}
+                    onRefreshSignatures={handleRefreshSignatures}
+                  />
                 )}
               </div>
             </div>

@@ -1,83 +1,48 @@
-import { createServerClient } from '@supabase/ssr';
-import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from "next/server";
+import { loginWithGitHubCode } from "@/lib/mf-data";
 
-export async function GET(request: NextRequest) {
+export const GET = async (request: NextRequest) => {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
-  const error = searchParams.get('error');
-  const errorDescription = searchParams.get('error_description');
-  // if "next" is in param, use it as the redirect URL
-  const next = searchParams.get('next') ?? '/';
+  const code = searchParams.get("code");
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+  const isLocalEnv = process.env.NODE_ENV === "development";
+  const redirectDomain = isLocalEnv ? origin : "https://manifesto.masterfabric.co";
 
-  console.log('Auth callback - Code:', code, 'Error:', error, 'Description:', errorDescription);
-
-  // If there's an explicit error from GitHub
   if (error) {
-    console.error('GitHub OAuth error:', error, errorDescription);
-    const isLocalEnv = process.env.NODE_ENV === 'development';
-    const redirectDomain = isLocalEnv ? origin : 'https://manifesto.masterfabric.co';
-    return NextResponse.redirect(`${redirectDomain}/auth/auth-code-error?error=${encodeURIComponent(error)}&description=${encodeURIComponent(errorDescription || '')}`);
+    return NextResponse.redirect(
+      `${redirectDomain}/auth/auth-code-error?error=${encodeURIComponent(error)}&description=${encodeURIComponent(errorDescription || "")}`,
+    );
   }
 
-  if (code) {
-    try {
-      const cookieStore = await cookies();
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() {
-              return cookieStore.getAll();
-            },
-            setAll(cookiesToSet: any) {
-              try {
-                cookiesToSet.forEach(({ name, value, options }: any) =>
-                  cookieStore.set(name, value, options)
-                );
-              } catch {
-                // The `setAll` method was called from a Server Component.
-                // This can be ignored if you have middleware refreshing
-                // user sessions.
-              }
-            },
-          },
-        }
+  if (!code) {
+    return NextResponse.redirect(`${redirectDomain}/auth/auth-code-error?error=missing_code`);
+  }
+
+  try {
+    const redirectUri = `${origin}/auth/callback`;
+    const result = await loginWithGitHubCode(code, redirectUri);
+    if (result.otpRequired) {
+      return NextResponse.redirect(
+        `${redirectDomain}/auth/auth-code-error?error=otp_required&description=${encodeURIComponent("OTP is required for this account")}`,
       );
-
-      const { error: supabaseError } = await supabase.auth.exchangeCodeForSession(code);
-      
-      if (!supabaseError) {
-        console.log('Auth successful, redirecting to:', next);
-        const forwardedHost = request.headers.get('x-forwarded-host');
-        const isLocalEnv = process.env.NODE_ENV === 'development';
-        
-        // Always use production domain in production
-        if (isLocalEnv) {
-          return NextResponse.redirect(`${origin}${next}`);
-        } else {
-          // Force redirect to production domain
-          const productionDomain = 'https://manifesto.masterfabric.co';
-          return NextResponse.redirect(`${productionDomain}${next}`);
-        }
-      } else {
-        console.error('Supabase auth error:', supabaseError);
-        const isLocalEnv = process.env.NODE_ENV === 'development';
-        const redirectDomain = isLocalEnv ? origin : 'https://manifesto.masterfabric.co';
-        return NextResponse.redirect(`${redirectDomain}/auth/auth-code-error?error=supabase_error&description=${encodeURIComponent(supabaseError.message)}`);
-      }
-    } catch (err) {
-      console.error('Auth callback exception:', err);
-      const isLocalEnv = process.env.NODE_ENV === 'development';
-      const redirectDomain = isLocalEnv ? origin : 'https://manifesto.masterfabric.co';
-      return NextResponse.redirect(`${redirectDomain}/auth/auth-code-error?error=callback_exception`);
     }
+    if (!result.accessToken || !result.user) {
+      return NextResponse.redirect(`${redirectDomain}/auth/auth-code-error?error=login_failed`);
+    }
+    const hash = new URLSearchParams({
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken || "",
+      user_id: result.user.id,
+      email: result.user.email,
+      display_name: result.user.displayName || "",
+      avatar_url: result.user.avatarURL || "",
+    });
+    return NextResponse.redirect(`${redirectDomain}/#${hash.toString()}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "callback_exception";
+    return NextResponse.redirect(
+      `${redirectDomain}/auth/auth-code-error?error=callback_exception&description=${encodeURIComponent(message)}`,
+    );
   }
-
-  // No code parameter found - this might be normal for hash-based auth
-  console.log('No code parameter found, redirecting to home (might be hash-based auth)');
-  const isLocalEnv = process.env.NODE_ENV === 'development';
-  const redirectDomain = isLocalEnv ? origin : 'https://manifesto.masterfabric.co';
-  return NextResponse.redirect(`${redirectDomain}${next}`);
-}
+};
