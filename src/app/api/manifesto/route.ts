@@ -1,32 +1,19 @@
-import fs from 'fs';
-import path from 'path';
-import matter from 'gray-matter';
-import { remark } from 'remark';
-import html from 'remark-html';
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { fetchParticularDocument } from "@/lib/mf-data";
 
+/**
+ * Manifesto body comes from particular-manifesto (SQLite) via mf-go.
+ * Markdown structure is preserved; HTML tags in the source (e.g. <u>) are kept.
+ */
 export async function GET() {
   try {
-    const manifestoPath = path.join(process.cwd(), 'content', 'manifesto.md');
-    const fileContents = fs.readFileSync(manifestoPath, 'utf8');
-    
-    // Parse frontmatter
-    const { data, content } = matter(fileContents);
-    
-    // Convert markdown to HTML
-    const processedContent = await remark()
-      .use(html)
-      .process(content);
-    
-    return NextResponse.json({
-      frontmatter: data,
-      content: processedContent.toString(),
-    });
+    const doc = await fetchParticularDocument();
+    if (!doc) {
+      return NextResponse.json({ error: "Manifesto document not found" }, { status: 404 });
+    }
+    return NextResponse.json(doc);
   } catch (error) {
-    console.error('Error loading manifesto:', error);
-    return NextResponse.json(
-      { error: 'Failed to load manifesto content' },
-      { status: 500 }
-    );
+    console.error("Error loading manifesto from Particular:", error);
+    return NextResponse.json({ error: "Failed to load manifesto content" }, { status: 500 });
   }
 }

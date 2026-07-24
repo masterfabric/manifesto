@@ -1,83 +1,71 @@
-import { supabase } from '@/lib/supabase';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  fetchMe,
+  fetchParticularSignatures,
+  normalizePublicProfile,
+  signParticularManifesto,
+} from "@/lib/mf-data";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { data, error } = await supabase
-      .from('signatures')
-      .select(`
-        *,
-        profiles (
-          github_username,
-          full_name,
-          avatar_url
-        )
-      `)
-      .order('signed_at', { ascending: false });
-
-    if (error) throw error;
-
-    return NextResponse.json(data, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
-      },
+    const limit = Number(req.nextUrl.searchParams.get("limit") || "100");
+    const data = await fetchParticularSignatures(Number.isFinite(limit) ? limit : 100);
+    return NextResponse.json(data.signatures, {
+      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" },
     });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error("API Error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch signatures' },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : "Failed to fetch signatures" },
+      { status: 502 },
     );
   }
 }
 
-export async function POST(request: Request) {
+/**
+ * Auth identity is mf-go only (`Authorization` → `me`).
+ * Particular stores a public snapshot for the wall; it does not register users.
+ */
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { message, location, user_id, privacy_consent } = body;
-
-    if (!user_id) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
+    const auth = request.headers.get("authorization") || "";
+    const token = auth.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return NextResponse.json({ error: "Bearer token required" }, { status: 401 });
     }
 
-    if (privacy_consent === undefined || privacy_consent === null) {
-      return NextResponse.json(
-        { error: 'Privacy consent is required' },
-        { status: 400 }
-      );
+    const body = (await request.json()) as {
+      message?: string;
+      location?: string;
+      privacy_consent?: boolean;
+    };
+
+    if (body.privacy_consent !== true) {
+      return NextResponse.json({ error: "Privacy consent is required" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('signatures')
-      .insert([
-        {
-          user_id,
-          message,
-          location,
-          privacy_consent,
-        }
-      ])
-      .select(`
-        *,
-        profiles (
-          github_username,
-          full_name,
-          avatar_url
-        )
-      `)
-      .single();
+    const me = await fetchMe(token);
+    const profile = normalizePublicProfile({
+      githubUsername: me.socialGitHub,
+      fullName: me.displayName,
+      avatarUrl: me.avatarURL,
+    });
 
-    if (error) throw error;
+    const signature = await signParticularManifesto(token, {
+      githubUsername: profile.githubUsername,
+      fullName: profile.fullName,
+      avatarUrl: profile.avatarUrl,
+      message: body.message,
+      location: body.location,
+      privacyConsent: true,
+    });
 
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(signature, { status: 201 });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error("API Error:", error);
     return NextResponse.json(
-      { error: 'Failed to create signature' },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : "Failed to create signature" },
+      { status: 502 },
     );
   }
 }

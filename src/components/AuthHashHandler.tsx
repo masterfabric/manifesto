@@ -1,102 +1,84 @@
 'use client';
 
-import { useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useSignatures } from '@/hooks/useSignatures';
-
-interface User {
-  id: string;
-  email: string;
-  user_metadata: {
-    full_name?: string;
-    name?: string;
-    avatar_url?: string;
-    preferred_username?: string;
-    user_name?: string;
-  };
-}
+import { useEffect, useRef } from 'react';
+import { checkUserHasSigned } from '@/hooks/useSignatures';
+import type { ManifestoUser, MfGoUser } from '@/lib/types';
+import { mapMfUser, notifySessionChange, setSession } from '@/lib/mf-session';
 
 interface AuthHashHandlerProps {
-  onShowUserDialog?: (user: User) => void;
+  onShowUserDialog?: (user: ManifestoUser) => void;
 }
 
 export const AuthHashHandler = ({ onShowUserDialog }: AuthHashHandlerProps) => {
-  const { hasUserSigned } = useSignatures();
+  const onShowUserDialogRef = useRef(onShowUserDialog);
+  onShowUserDialogRef.current = onShowUserDialog;
+
   useEffect(() => {
     const handleAuthHash = async () => {
-      // Check if we have auth data in the hash
-      if (typeof window !== 'undefined' && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const expiresIn = hashParams.get('expires_in');
-        const tokenType = hashParams.get('token_type');
+      if (typeof window === 'undefined' || !window.location.hash) return;
 
-        if (accessToken) {
-          console.log('Found access token in hash, setting session...');
-          console.log('Token details:', { 
-            accessToken: accessToken.substring(0, 20) + '...', 
-            hasRefreshToken: !!refreshToken,
-            expiresIn,
-            tokenType 
-          });
-          
-          try {
-            // Set the session using the tokens from the hash
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken || '',
-            });
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      if (!accessToken) return;
 
-            if (error) {
-              console.error('Error setting session from hash:', error);
-            } else {
-              console.log('Successfully set session from hash!');
-              console.log('User data:', data.user?.user_metadata);
-              
-              // Clean up the URL hash
-              window.history.replaceState(null, '', window.location.pathname);
-              
-              // Check if user has signed before showing dialog
-              if (data.user) {
-                console.log('Checking if user has signed before showing dialog...');
-                const checkAndShowDialog = async () => {
-                  try {
-                    const hasSigned = await hasUserSigned(data.user!.id);
-                    console.log('User has signed:', hasSigned);
-                    
-                    if (!hasSigned) {
-                      console.log('User has not signed, showing user dialog');
-                      onShowUserDialog?.(data.user as unknown as User);
-                    } else {
-                      console.log('User has already signed, no dialog needed');
-                    }
-                  } catch (error) {
-                    console.error('Error checking signature status:', error);
-                    // Show dialog anyway if there's an error
-                    onShowUserDialog?.(data.user as unknown as User);
-                  }
-                };
-                
-                // Small delay to ensure everything is set up
-                setTimeout(checkAndShowDialog, 500);
-              }
-              
-              // Don't reload, just let the auth state propagate
-              // setTimeout(() => {
-              //   window.location.reload();
-              // }, 500);
-            }
-          } catch (err) {
-            console.error('Exception setting session from hash:', err);
-          }
+      const refreshToken = hashParams.get('refresh_token');
+      const userId = hashParams.get('user_id');
+      const email = hashParams.get('email');
+      const displayName = hashParams.get('display_name');
+      const avatarUrl = hashParams.get('avatar_url');
+      const socialGitHub = hashParams.get('social_github');
+
+      if (!userId || !email) return;
+
+      // Clear hash immediately so remounts / Strict Mode do not re-process.
+      window.history.replaceState(null, '', window.location.pathname);
+
+      let mfUser: MfGoUser = {
+        id: userId,
+        email,
+        displayName: displayName || null,
+        avatarURL: avatarUrl || null,
+        socialGitHub: socialGitHub || null,
+      };
+
+      try {
+        const res = await fetch('/api/me', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const json = await res.json();
+        if (res.ok && json?.user) {
+          mfUser = {
+            id: json.user.id || mfUser.id,
+            email: json.user.email || mfUser.email,
+            displayName: json.user.displayName ?? mfUser.displayName,
+            avatarURL: json.user.avatarURL ?? mfUser.avatarURL,
+            socialGitHub: json.user.socialGitHub ?? mfUser.socialGitHub,
+          };
         }
+      } catch {
+        /* keep hash user */
+      }
+
+      setSession({
+        accessToken,
+        refreshToken,
+        user: mfUser,
+      });
+      notifySessionChange();
+
+      const user = mapMfUser(mfUser);
+      try {
+        const hasSigned = await checkUserHasSigned(user.id);
+        if (!hasSigned) {
+          onShowUserDialogRef.current?.(user);
+        }
+      } catch {
+        onShowUserDialogRef.current?.(user);
       }
     };
 
-    // Run on mount
     handleAuthHash();
   }, []);
 
-  return null; // This component doesn't render anything
+  return null;
 };
