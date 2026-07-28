@@ -105,6 +105,15 @@ export default function Home() {
   const [showPrivacyBanner, setShowPrivacyBanner] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState<boolean | null>(null);
   const signaturesListRef = useRef<{ refetch: () => void }>(null);
+  const signSectionRef = useRef<HTMLDivElement>(null);
+
+  const scrollToSignForm = () => {
+    window.setTimeout(() => {
+      signSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const message = document.getElementById('message') as HTMLTextAreaElement | null;
+      message?.focus({ preventScroll: true });
+    }, 250);
+  };
 
   useEffect(() => {
     const loadManifestoContent = async () => {
@@ -146,6 +155,7 @@ export default function Home() {
     if (storedConsent === 'true') {
       setPrivacyConsent(true);
       setShowSignatureForm(true);
+      scrollToSignForm();
       return;
     }
     if (storedConsent === 'false') {
@@ -212,6 +222,7 @@ export default function Home() {
     localStorage.setItem('privacy_consent', 'true');
     setShowPrivacyDialog(false);
     setShowSignatureForm(true);
+    scrollToSignForm();
   };
 
   const handlePrivacyReject = () => {
@@ -276,7 +287,11 @@ export default function Home() {
           <div className="max-w-4xl mx-auto">
             <SignaturesList ref={signaturesListRef} />
 
-            <div className="rounded-lg bg-gray-50 p-4 sm:p-5">
+            <div
+              ref={signSectionRef}
+              id="sign-manifesto-section"
+              className="rounded-lg bg-gray-50 p-4 sm:p-5"
+            >
               <div className="mx-auto max-w-md space-y-4">
                 <GitHubAuth
                   onAuthChange={handleAuthChange}
