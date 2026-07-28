@@ -197,7 +197,6 @@ export async function loginWithGitHubCode(code: string, redirectUri: string) {
         email: string;
         displayName?: string | null;
         avatarURL?: string | null;
-        socialGitHub?: string | null;
       } | null;
     };
   }>({
@@ -210,7 +209,7 @@ export async function loginWithGitHubCode(code: string, redirectUri: string) {
       }
     }`,
     variables: { input: { code, redirectUri } },
-    omitApiKey: true,
+    // Send X-API-Key so mf-go provisions a normal USER (not Core admin bootstrap).
   });
   return data.loginWithGitHub;
 }

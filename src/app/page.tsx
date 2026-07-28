@@ -10,6 +10,7 @@ import { SignatureSuccessDialog } from '@/components/SignatureSuccessDialog';
 import { AuthHashHandler } from '@/components/AuthHashHandler';
 import { PrivacyConsentDialog } from '@/components/PrivacyConsentDialog';
 import { PrivacyWarningBanner } from '@/components/PrivacyWarningBanner';
+import { getStoredUser } from '@/lib/mf-session';
 
 interface User {
   id: string;
@@ -39,9 +40,9 @@ const Footer = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
           <div className="space-y-2">
             <div className="text-sm text-gray-600">
-              <span className="font-semibold">Source Code:</span> 
-              <a 
-                href="https://github.com/gurkanfikretgunak/manifesto" 
+              <span className="font-semibold">Source Code:</span>
+              <a
+                href="https://github.com/gurkanfikretgunak/manifesto"
                 className="ml-1 hover:text-gray-900 transition-colors"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -50,14 +51,14 @@ const Footer = () => {
               </a>
             </div>
             <div className="text-sm text-gray-600">
-              <span className="font-semibold">Owner:</span> 
+              <span className="font-semibold">Owner:</span>
               <span className="ml-1">MasterFabric Developers</span>
             </div>
           </div>
           <div className="space-y-2">
             <div className="text-sm text-gray-600">
-              <a 
-                href="https://masterfabric.co" 
+              <a
+                href="https://masterfabric.co"
                 className="font-semibold hover:text-gray-900 transition-colors"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -66,8 +67,8 @@ const Footer = () => {
               </a>
             </div>
             <div className="text-sm text-gray-600">
-              <a 
-                href="https://www.gurkanfikretgunak.com" 
+              <a
+                href="https://www.gurkanfikretgunak.com"
                 className="font-semibold hover:text-gray-900 transition-colors"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -77,7 +78,7 @@ const Footer = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="mt-8 pt-6 border-t border-gray-100">
           <div className="text-xs text-gray-500 space-y-1">
             <p>Built with Next.js, TailwindCSS, and Three.js</p>
@@ -106,44 +107,33 @@ export default function Home() {
   const signaturesListRef = useRef<{ refetch: () => void }>(null);
 
   useEffect(() => {
-    // Load manifesto content
     const loadManifestoContent = async () => {
       try {
-        const response = await fetch('/api/manifesto');
-        if (response.ok) {
-          const data = await response.json();
+        const { fetchParticularDocument } = await import('@/lib/mf-data');
+        const data = await fetchParticularDocument();
+        if (data) {
           setManifestoContent(data);
-        } else {
-          // Fallback content if API doesn't exist
-          setManifestoContent({
-            frontmatter: {
-              title: 'The Developer Manifesto',
-              author: 'MasterFabric Developers',
-              date: '2024'
-            },
-            content: '<p>Loading manifesto content...</p>'
-          });
+          return;
         }
-      } catch (error) {
-        console.error('Error loading manifesto:', error);
-        // Set fallback content
         setManifestoContent({
           frontmatter: {
             title: 'The Developer Manifesto',
             author: 'MasterFabric Developers',
-            date: '2024'
+            date: '2024',
           },
-          content: `
-            <h2>We are developers who believe in:</h2>
-            <ul>
-              <li>Writing clean, maintainable code</li>
-              <li>Continuous learning and improvement</li>
-              <li>Building software that matters</li>
-              <li>Collaboration and knowledge sharing</li>
-              <li>Ethical technology practices</li>
-            </ul>
-            <p>Join us in signing this manifesto to show your commitment to these principles.</p>
-          `
+          content: '<p>Manifesto document not found.</p>',
+        });
+      } catch (error) {
+        console.error('Error loading manifesto:', error);
+        setManifestoContent({
+          frontmatter: {
+            title: 'The Developer Manifesto',
+            author: 'MasterFabric Developers',
+            date: '2024',
+          },
+          content: `<p class="text-red-700">Failed to load manifesto: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }</p>`,
         });
       }
     };
@@ -151,13 +141,45 @@ export default function Home() {
     loadManifestoContent();
   }, []);
 
-  const handleAuthChange = (user: User | null) => {
-    console.log('Auth change in main page:', user);
-    setCurrentUser(user);
+  const resumeSignFlowForUser = () => {
+    const storedConsent = localStorage.getItem('privacy_consent');
+    if (storedConsent === 'true') {
+      setPrivacyConsent(true);
+      setShowSignatureForm(true);
+      return;
+    }
+    if (storedConsent === 'false') {
+      setPrivacyConsent(false);
+      setShowPrivacyBanner(true);
+      return;
+    }
+    setShowPrivacyDialog(true);
   };
 
-  const handleShowUserDialog = (user: User) => {
-    console.log('handleShowUserDialog called with user:', user);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('welcome') !== '1') return;
+    window.history.replaceState(null, '', window.location.pathname);
+    const user = getStoredUser();
+    if (user) {
+      setCurrentUser(user);
+      setShowUserDialog(true);
+    }
+  }, []);
+
+  const handleAuthChange = (user: User | null) => {
+    setCurrentUser(user);
+    if (!user) {
+      setShowSignatureForm(false);
+      return;
+    }
+    if (localStorage.getItem('privacy_consent') === 'true') {
+      setPrivacyConsent(true);
+      setShowSignatureForm(true);
+    }
+  };
+
+  const handleShowUserDialog = (_user: User) => {
     setShowUserDialog(true);
   };
 
@@ -167,29 +189,17 @@ export default function Home() {
 
   const handleSignManifesto = () => {
     setShowUserDialog(false);
-    // Check privacy consent first
-    const storedConsent = localStorage.getItem('privacy_consent');
-    if (storedConsent === 'true') {
-      setPrivacyConsent(true);
-      setShowSignatureForm(true);
-    } else if (storedConsent === 'false') {
-      setPrivacyConsent(false);
-      setShowPrivacyBanner(true);
-    } else {
-      // First time, show privacy dialog
-      setShowPrivacyDialog(true);
-    }
+    resumeSignFlowForUser();
   };
 
   const handleSignatureSuccess = (userName: string) => {
     setSuccessUserName(userName);
     setShowSuccessDialog(true);
-    setShowSignatureForm(false);
+    setShowSignatureForm(true);
   };
 
   const handleCloseSuccessDialog = () => {
     setShowSuccessDialog(false);
-    // Refresh the page to show updated signatures
     window.location.reload();
   };
 
@@ -198,7 +208,6 @@ export default function Home() {
   };
 
   const handlePrivacyAccept = () => {
-    console.log('Privacy consent accepted');
     setPrivacyConsent(true);
     localStorage.setItem('privacy_consent', 'true');
     setShowPrivacyDialog(false);
@@ -206,7 +215,6 @@ export default function Home() {
   };
 
   const handlePrivacyReject = () => {
-    console.log('Privacy consent rejected');
     setPrivacyConsent(false);
     localStorage.setItem('privacy_consent', 'false');
     setShowPrivacyDialog(false);
@@ -233,18 +241,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white relative">
       <AuthHashHandler onShowUserDialog={handleShowUserDialog} />
-      
-      {/* Privacy Warning Banner */}
+
       <PrivacyWarningBanner
         isVisible={showPrivacyBanner}
         onRetry={handlePrivacyRetry}
         onDismiss={handlePrivacyBannerDismiss}
       />
-      
+
       <AbstractAnimation />
-      
+
       <main className="relative z-10 max-w-4xl mx-auto px-8 py-16">
-        {/* Header */}
         <header className="mb-16">
           <div className="mb-4">
             <span className="text-sm text-gray-500 uppercase tracking-wider">
@@ -261,31 +267,29 @@ export default function Home() {
           )}
         </header>
 
-        {/* Manifesto Content */}
-        <article 
+        <article
           className="prose prose-lg prose-gray max-w-none prose-headings:font-bold prose-headings:text-manifesto-gray prose-p:text-manifesto-gray prose-li:text-manifesto-gray prose-strong:text-manifesto-gray prose-a:text-manifesto-gray prose-a:underline prose-a:decoration-gray-400 prose-a:underline-offset-2 hover:prose-a:decoration-manifesto-gray transition-all duration-300"
           dangerouslySetInnerHTML={{ __html: manifestoContent.content }}
         />
 
-        {/* Signature Section */}
         <section className="mt-24 pt-16 border-t border-gray-200">
           <div className="max-w-4xl mx-auto">
-            {/* Signatures List */}
             <SignaturesList ref={signaturesListRef} />
 
-            {/* GitHub Authentication & Signature Form */}
             <div className="rounded-lg bg-gray-50 p-4 sm:p-5">
               <div className="mx-auto max-w-md space-y-4">
-                <GitHubAuth 
+                <GitHubAuth
                   onAuthChange={handleAuthChange}
                   onShowUserDialog={handleShowUserDialog}
                 />
-                {(currentUser && showSignatureForm) && (
-                  <SignatureForm 
+                {currentUser ? (
+                  <SignatureForm
                     onSignatureSuccess={handleSignatureSuccess}
                     onRefreshSignatures={handleRefreshSignatures}
+                    onNeedPrivacy={() => setShowPrivacyDialog(true)}
+                    readyToSign={showSignatureForm || privacyConsent === true}
                   />
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -294,7 +298,6 @@ export default function Home() {
 
       <Footer />
 
-      {/* Dialogs */}
       <UserProfileDialog
         user={currentUser}
         isOpen={showUserDialog}
@@ -308,7 +311,6 @@ export default function Home() {
         userName={successUserName}
       />
 
-      {/* Privacy Consent Dialog */}
       <PrivacyConsentDialog
         user={currentUser}
         isOpen={showPrivacyDialog}

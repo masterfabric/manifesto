@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { fetchParticularDocument } from "@/lib/mf-data";
 
 /**
- * Manifesto body comes from particular-manifesto (SQLite) via mf-go.
- * Markdown structure is preserved; HTML tags in the source (e.g. <u>) are kept.
+ * Optional server proxy. Prefer browser → mf-go (see page.tsx) on Vercel:
+ * Cloudflare challenges Vercel egress to api-core.
  */
 export async function GET() {
   try {
@@ -14,6 +14,9 @@ export async function GET() {
     return NextResponse.json(doc);
   } catch (error) {
     console.error("Error loading manifesto from Particular:", error);
-    return NextResponse.json({ error: "Failed to load manifesto content" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load manifesto content" },
+      { status: 500 },
+    );
   }
 }

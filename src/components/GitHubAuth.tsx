@@ -70,9 +70,26 @@ export const GitHubAuth = ({ onAuthChange, onShowUserDialog }: GitHubAuthProps) 
     onAuthChange?.(null);
   };
 
-  const handleGitHubSignIn = () => {
+  const handleGitHubSignIn = async () => {
     setAuthError(null);
-    window.location.href = '/api/auth/github';
+    try {
+      const { fetchGithubClientId } = await import('@/lib/mf-data');
+      const clientId = await fetchGithubClientId();
+      if (!clientId) {
+        setAuthError(
+          'GitHub OAuth is not configured on mf-go (mfCorePublicAuth.githubClientId empty).',
+        );
+        return;
+      }
+      const redirectUri = `${window.location.origin}/auth/callback`;
+      const url = new URL('https://github.com/login/oauth/authorize');
+      url.searchParams.set('client_id', clientId);
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('scope', 'read:user user:email');
+      window.location.href = url.toString();
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'Failed to start GitHub sign-in');
+    }
   };
 
   if (loading) {

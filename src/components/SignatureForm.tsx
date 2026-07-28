@@ -8,11 +8,17 @@ import { getStoredUser, sessionEventName } from '@/lib/mf-session';
 interface SignatureFormProps {
   onSignatureSuccess?: (userName: string) => void;
   onRefreshSignatures?: () => void;
+  /** Opens privacy consent when the user tries to sign without it. */
+  onNeedPrivacy?: () => void;
+  /** Parent finished welcome/privacy — form fields are interactive. */
+  readyToSign?: boolean;
 }
 
 export const SignatureForm = ({
   onSignatureSuccess,
   onRefreshSignatures,
+  onNeedPrivacy,
+  readyToSign = false,
 }: SignatureFormProps = {}) => {
   const { addSignature } = useSignatures();
   const [user, setUser] = useState<ManifestoUser | null>(null);
@@ -52,14 +58,14 @@ export const SignatureForm = ({
     e.preventDefault();
     if (!user) return;
 
+    const privacyConsent = localStorage.getItem('privacy_consent') === 'true';
+    if (!privacyConsent) {
+      onNeedPrivacy?.();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const privacyConsent = localStorage.getItem('privacy_consent') === 'true';
-      if (!privacyConsent) {
-        alert('Privacy consent is required to sign the manifesto.');
-        return;
-      }
-
       const result = await addSignature(formData.message, formData.location, privacyConsent);
       if (result) {
         setFormData({ message: '', location: '', privacyConsent: false });
@@ -106,6 +112,26 @@ export const SignatureForm = ({
         <p className="text-green-700">
           Your signature has been added to the Developer Manifesto. Thank you for supporting these
           principles!
+        </p>
+      </div>
+    );
+  }
+
+  if (!readyToSign) {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center">
+        <p className="text-sm text-gray-600">
+          Continue from the welcome dialog to add your signature, or{' '}
+          <button
+            type="button"
+            className="font-medium text-blue-800 underline underline-offset-2"
+            onClick={() => onNeedPrivacy?.()}
+            tabIndex={0}
+            aria-label="Start signing the manifesto"
+          >
+            start signing
+          </button>
+          .
         </p>
       </div>
     );

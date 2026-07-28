@@ -3,17 +3,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Signature } from '@/lib/types';
 import { getAccessToken } from '@/lib/mf-session';
+import {
+  fetchMe,
+  fetchMyParticularSignature,
+  fetchParticularSignatures,
+  normalizePublicProfile,
+  signParticularManifesto,
+} from '@/lib/mf-data';
 
 /** Stable helper — safe to call from effects without putting the hook fn in deps. */
-export const checkUserHasSigned = async (userId: string): Promise<boolean> => {
+export const checkUserHasSigned = async (_userId: string): Promise<boolean> => {
   try {
     const token = getAccessToken();
     if (!token) return false;
-    const res = await fetch('/api/me/signature', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const json = await res.json();
-    return Boolean(res.ok && json.ok && json.signature);
+    const signature = await fetchMyParticularSignature(token);
+    return Boolean(signature);
   } catch {
     return false;
   }
@@ -28,12 +32,8 @@ export const useSignatures = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/signatures?limit=100');
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
-      }
-      setSignatures(Array.isArray(json) ? json : []);
+      const data = await fetchParticularSignatures(100);
+      setSignatures(data.signatures);
     } catch (err) {
       console.error('Error fetching signatures:', err);
       setError(err instanceof Error ? err.message : 'Failed to load signatures');
@@ -53,24 +53,23 @@ export const useSignatures = () => {
         throw new Error('Privacy consent is required');
       }
 
-      const res = await fetch('/api/signatures', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message,
-          location,
-          privacy_consent: true,
-        }),
+      const me = await fetchMe(token);
+      const profile = normalizePublicProfile({
+        githubUsername: me.socialGitHub,
+        fullName: me.displayName,
+        avatarUrl: me.avatarURL,
       });
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
-      }
-      setSignatures((prev) => [json as Signature, ...prev]);
-      return json as Signature;
+
+      const signature = await signParticularManifesto(token, {
+        githubUsername: profile.githubUsername,
+        fullName: profile.fullName,
+        avatarUrl: profile.avatarUrl,
+        message,
+        location,
+        privacyConsent: true,
+      });
+      setSignatures((prev) => [signature, ...prev]);
+      return signature;
     },
     [],
   );

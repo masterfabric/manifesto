@@ -42,19 +42,15 @@ export const AuthHashHandler = ({ onShowUserDialog }: AuthHashHandlerProps) => {
       };
 
       try {
-        const res = await fetch('/api/me', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const json = await res.json();
-        if (res.ok && json?.user) {
-          mfUser = {
-            id: json.user.id || mfUser.id,
-            email: json.user.email || mfUser.email,
-            displayName: json.user.displayName ?? mfUser.displayName,
-            avatarURL: json.user.avatarURL ?? mfUser.avatarURL,
-            socialGitHub: json.user.socialGitHub ?? mfUser.socialGitHub,
-          };
-        }
+        const { fetchMe } = await import('@/lib/mf-data');
+        const me = await fetchMe(accessToken);
+        mfUser = {
+          id: me.id || mfUser.id,
+          email: me.email || mfUser.email,
+          displayName: me.displayName ?? mfUser.displayName,
+          avatarURL: me.avatarURL ?? mfUser.avatarURL,
+          socialGitHub: me.socialGitHub ?? mfUser.socialGitHub,
+        };
       } catch {
         /* keep hash user */
       }

@@ -1,6 +1,7 @@
 /**
  * MasterFabric GraphQL + particular-manifesto forward helpers.
- * All product data goes: this app → mf-go → particular-manifesto.
+ * Prefer calling from the browser (visitor IP). Vercel Route Handlers that
+ * call api-core are often blocked by Cloudflare bot checks.
  */
 
 export const MANIFESTO_PARTICULAR_ID = "manifesto";
@@ -112,7 +113,19 @@ export async function mfGraphql<T>(args: {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`mf-go HTTP ${res.status}`);
+    const body = (await res.text()).slice(0, 200).replace(/\s+/g, " ");
+    const cfChallenge = /just a moment/i.test(body);
+    if (cfChallenge) {
+      throw new Error(
+        `mf-go HTTP ${res.status} (Cloudflare blocked this request — call from the browser, not Vercel egress)`,
+      );
+    }
+    const cfRay = res.headers.get("cf-ray");
+    throw new Error(
+      `mf-go HTTP ${res.status}` +
+        (cfRay ? ` cf-ray=${cfRay}` : "") +
+        (body ? ` body=${body}` : ""),
+    );
   }
   const json = (await res.json()) as { data?: T; errors?: { message: string }[] };
   if (json.errors?.length) {
